@@ -10,13 +10,44 @@ OUTPUT_DIR="./output"
 
 mkdir -p "$OUTPUT_DIR"
 
-# --- 2. ASSET PICKING ---
-# Using shuf for better performance on GitHub
+# --- 2. ASSET PICKING (WITH MEMORY TRACKER) ---
+# Background videos: remain purely random
 FILES=($(find "$INPUT_DIR" -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mov" \) | shuf -n 20))
-LYRICS_FILE=$(find "$LYRICAL_DIR" -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mov" \) | shuf -n 1)
-
 if [ ${#FILES[@]} -eq 0 ]; then echo "❌ No background videos found"; exit 1; fi
-if [ -z "$LYRICS_FILE" ]; then echo "❌ No lyrical reel found"; exit 1; fi
+
+# Lyrical reels: Random without replacement
+PLAYED_FILE="./assets/played_lyrics.txt"
+mkdir -p ./assets
+touch "$PLAYED_FILE"
+
+# Get all lyrical reels safely handling spaces in filenames
+mapfile -t ALL_LYRICS < <(find "$LYRICAL_DIR" -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mov" \))
+if [ ${#ALL_LYRICS[@]} -eq 0 ]; then echo "❌ No lyrical reel found"; exit 1; fi
+
+# Filter out files that have already been played
+UNPLAYED=()
+for f in "${ALL_LYRICS[@]}"; do
+    bname=$(basename "$f")
+    if ! grep -qFx "$bname" "$PLAYED_FILE"; then
+        UNPLAYED+=("$f")
+    fi
+done
+
+# If all files have been played, reset the tracker to start a new cycle
+if [ ${#UNPLAYED[@]} -eq 0 ]; then
+    echo "🔄 All lyrical reels have been used! Starting a new cycle..."
+    > "$PLAYED_FILE"
+    UNPLAYED=("${ALL_LYRICS[@]}")
+fi
+
+# Pick a random file from the UNPLAYED list
+RAND_IDX=$((RANDOM % ${#UNPLAYED[@]}))
+LYRICS_FILE="${UNPLAYED[$RAND_IDX]}"
+
+# Save the chosen file to the tracker so it doesn't get picked again
+basename "$LYRICS_FILE" >> "$PLAYED_FILE"
+echo "🎶 Selected Lyrical Reel: $(basename "$LYRICS_FILE")"
+
 
 # --- 3. MERGE CLIPS ---
 echo "🎬 Step 1: Processing Background Clips..."
@@ -49,7 +80,7 @@ out_file="$OUTPUT_DIR/$url_filename"
 # Filter Explanation:
 # [2:v] prepares the logo
 # [1:v] prepares the lyrics video. colorkey=black removes the black background. 
-# [bg_lyric] overlays the transparent lyrics onto the background clips (Removed :shortest=1)
+# [bg_lyric] overlays the transparent lyrics onto the background clips
 # [v_f] overlays the logo onto the combined video
 # [1:a] adds a 2-second audio fade out starting at 18s so the music doesn't end abruptly
 FILTER="[2:v]scale=180:-1,format=rgba,fade=t=in:st=${logo_start}:d=0.5:alpha=1,fade=t=out:st=${logo_fade_out}:d=0.5:alpha=1[logo_p]; \
@@ -82,6 +113,7 @@ if [ -f "$out_file" ]; then
     # Cleanup old videos in output folder
     find "$OUTPUT_DIR" -type f ! -name "$url_filename" -delete
     
+    # This automatically adds the new output video AND the updated played_lyrics.txt
     git add .
     git add "$out_file"
 
