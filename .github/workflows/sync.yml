@@ -28,7 +28,7 @@ jobs:
           set -e
 
           # --- CONFIGURATION ---
-          MAPPINGS="reels/lyrical-reels:lyrical-reel"
+          MAPPINGS="reels/lyrical-reels:lyrical-reel reels/PopHitsPlaylist:reels"
 
           echo "🔐 Setting up Path-Specific Smart Sync..."
 
