@@ -1,0 +1,37 @@
+name: Render Reel Video -Make.com
+
+on:
+  workflow_dispatch:
+  push:
+  schedule:
+    - cron: '0 3 * * *'
+    - cron: '0 4 * * *'
+    - cron: '0 5 * * *'
+  
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    # --- TIME LIMIT ADDED HERE ---
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Run Everything
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          SHEETDB_URL: ${{ secrets.SHEETDB_URL }}
+        run: |
+          chmod +x make.sh
+          ./make.sh
