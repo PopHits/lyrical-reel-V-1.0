@@ -1,4 +1,4 @@
-name: Private Warehouse Sync
+name: Sync
 
 on:
   schedule:
