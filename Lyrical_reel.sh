@@ -30,14 +30,16 @@ done
 
 MERGED_RAW="$TMP/merged_raw.mp4"
 ffmpeg -f concat -safe 0 -i "$TMP/list.txt" -c copy "$MERGED_RAW" -y -loglevel error
-DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$MERGED_RAW")
+
+# Set a strict target duration for the final reel
+TARGET_DUR=20
 
 # --- 4. APPLY LYRICS, LOGO & AUDIO ---
-echo "🎨 Step 2: Applying Lyrics & Visuals (Background Duration: ${DUR}s)..."
+echo "🎨 Step 2: Applying Lyrics & Visuals (Target Duration: ${TARGET_DUR}s)..."
 
-# Safe fade calculations for the logo
-logo_start=$(echo "$DUR" | awk '{print $1 / 2}')
-logo_fade_out=$(echo "$DUR" | awk '{print ($1 > 1.5) ? $1 - 1.2 : $1 - 0.2}')
+# Safe fade calculations for the logo based on the 20s target
+logo_start=$(echo "$TARGET_DUR" | awk '{print $1 / 2}')
+logo_fade_out=$(echo "$TARGET_DUR" | awk '{print $1 - 0.5}')
 
 # Generate file name based on the chosen lyrical reel
 safe_name=$(basename "$LYRICS_FILE" | sed 's/\.[^.]*$//' | tr -cd '[:alnum:] ' | cut -c1-50 | xargs)
@@ -47,20 +49,23 @@ out_file="$OUTPUT_DIR/$url_filename"
 # Filter Explanation:
 # [2:v] prepares the logo
 # [1:v] prepares the lyrics video. colorkey=black removes the black background. 
-# [bg_lyric] overlays the transparent lyrics onto the background clips
+# [bg_lyric] overlays the transparent lyrics onto the background clips (Removed :shortest=1)
 # [v_f] overlays the logo onto the combined video
+# [1:a] adds a 2-second audio fade out starting at 18s so the music doesn't end abruptly
 FILTER="[2:v]scale=180:-1,format=rgba,fade=t=in:st=${logo_start}:d=0.5:alpha=1,fade=t=out:st=${logo_fade_out}:d=0.5:alpha=1[logo_p]; \
 [1:v]scale=1080:1920:force_original_aspect_ratio=decrease,colorkey=black:0.1:0.2[lyrics]; \
-[0:v][lyrics]overlay=x=(W-w)/2:y=(H-h)/2:shortest=1[bg_lyric]; \
-[bg_lyric][logo_p]overlay=x=(W-w)/2:y=H-h-80[v_f]"
+[0:v][lyrics]overlay=x=(W-w)/2:y=(H-h)/2[bg_lyric]; \
+[bg_lyric][logo_p]overlay=x=(W-w)/2:y=H-h-80[v_f]; \
+[1:a]afade=t=out:st=18:d=2[aud]"
 
 # Execute the final combined render
-# -map 1:a pulls the audio directly from the lyrical reel
-ffmpeg -i "$MERGED_RAW" -i "$LYRICS_FILE" -loop 1 -i "$LOGO_PATH" \
+# -stream_loop -1 on MERGED_RAW loops the background video so it never freezes
+# -t $TARGET_DUR forces the exact 20 second cutoff
+ffmpeg -stream_loop -1 -i "$MERGED_RAW" -i "$LYRICS_FILE" -loop 1 -i "$LOGO_PATH" \
   -filter_complex "$FILTER" \
-  -map "[v_f]" -map 1:a \
+  -map "[v_f]" -map "[aud]" -t $TARGET_DUR \
   -c:v libx264 -preset veryslow -crf 24 -pix_fmt yuv420p \
-  -c:a aac -b:a 128k -shortest -movflags +faststart "$out_file" -y -loglevel warning
+  -c:a aac -b:a 128k -movflags +faststart "$out_file" -y -loglevel warning
 
 # --- 5. GITHUB UPLOAD (FORCE PUSH TO SAVE SPACE) ---
 if [ -f "$out_file" ]; then
