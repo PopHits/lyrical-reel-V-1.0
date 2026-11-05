@@ -32,5 +32,5 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
         run: |
-          chmod +x make.sh
+          chmod +x Lyrical_reel.sh
           ./Lyrical_reel.sh
